@@ -1,0 +1,226 @@
+---
+title: "Using Deep Learning for Detecting Soybean Diseases"
+author: "Prithviraj Lakkakula"
+date: "3/9/2022"
+output:
+  html_document: 
+    toc: yes
+    highlight: zenburn
+    theme: cosmo
+  pdf_document: 
+    latex_engine: xelatex
+    toc: yes
+    highlight: zenburn
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Unstructured Data 
+
+Unlike traditional structured data, Images or pictures and the text data are considered as unstructured data. The analysis of unstructured data involves converting into structured data and then conduct analysis.
+
+## Deep Learning and Keras 
+
+Deep learning is a subfield of machine learning that uses neural networks. A simple neural network consists of an input layer, a hidden layer, and an output layer. The term 'deep learning' is used for a model  neural networks that has more than one hidden layer is used for conducting an analysis.
+
+Keras is a high-level neural network application programming interface (API) for deep learning . It uses Tensorflow by Google as a backend. A front end is user interface (what the user sees) and a backend is a server application and database that works behind the scenes to delier the information to the user.
+
+## Soybean Disease Image Data
+
+In this post, I will illustrate image classification and recognition using Keras package using 20 images for each of the four diseases of soybean. The four soybean diseases include bacterial blight (BB), bacterial pustule (BP), downy mildew (DM), and sudden death (SD) syndrome. In other words, this analysis is essentially a deep learning supervised learning problem that involve labeling of disease images or pictures of soybeans in this case. A total of 80 disease images will be used in this illustration. First 20 images are bacterial blight, and each of the next 20 are disease images of bacterial pustule, downy mildew, and sudden death syndrome, respectively.
+
+Before proceeding, first we need to download and call the libraries of the following packages. It is important to note that the line of code that starts with **#** is considered as comment in R. Please follow the steps below.
+
+### Step 1. Loading required R packages
+
+```{r}
+#The line of R code that starts with '#' is a comment. For example, this is a comment.
+#install.packages("BiocManager") 
+#BiocManager::install("EBImage")
+library(EBImage) #EBImage, an R package used to handle and explore image data
+library(keras)   #Keras is a high-level neural network API for deep learning
+```
+
+### Step 2. Read Images
+
+The following chunk of R code reads all soybean disease images. In our case, it is a total of 80 disease images for our illustration purposes.
+
+```{r }
+#setwd('/Volumes/RAJ/DLImages/idata⁩')
+images = list.files(pattern="*.JPG")
+myimages <- list()
+for (i in 1:length(images)) {myimages[[i]] <- readImage(images[i])}
+```
+
+
+### Step 3. Exploring Soybean Disease Images
+
+In the following chunk of R code, the *print* function provides an output that converts unstructured data, that is image, to structured data (numbers). In other words, the dimensions of the image is converted into data points (**pixels**). The **print** function provides an output that consists of dimentions (dim) for each of the four diseases. First observation is that the first and last images are of different size and second and third image are of the same size. The **dim** in the output consists of three numbers. For example, if you take the first image, the dimensions are **6016 times 4016 times 3** which when multiplied gives **72,480,768** pixels as shown in the histogram figure of first image. The number 6016 is width of that image, 4016 is the height of the image, and 3 indicates the number of channels. In our case, as we are dealing with color images, the number of channels are 3, indicating RBG (red, blue, green). If it were a grayscale image, the last value in the **dim** would take a value of 1 (not 3).
+
+```{r }
+m <- c(1, 21, 41, 61)
+for (i in m) {print(myimages[[i]])}
+#print(myimages[[1]])
+#display(myimages[[1]])
+#summary(myimages[[1]])
+#hist(myimages[[1]])
+#str(myimages[[1]])
+```
+
+In the below, we plot an image of each of four diseases.
+```{r}
+par(mfrow = c(2,2))
+for (i in m) {plot(myimages[[i]])}
+```
+
+In the R code chunk below, the histogram of RBG channels are shown. It is clear that the intensity of RBG colors for each of the four disease images are quite different from the figures. Intensity values range between 0 and 1. 
+```{r}
+par(mfrow = c(1,1))
+for (i in m) {hist(myimages[[i]])}
+```
+
+### Step 4. Resizing and Reshaping Images
+
+As we already know, the size of the images are different. As part of data preparation, one needs to convert all the images into a one fixed size. Here we are converting their size and reshaping into **36 times 36 times 3**.
+```{r }
+for (i in 1:length(images)) {myimages[[i]] <- resize(myimages[[i]], 36, 36)}
+for (i in 1:length(images)) {myimages[[i]] <- array_reshape(myimages[[i]], c(36, 36, 3))}
+```
+
+
+### Step 5. Row Binding All the Images into Training, Validation, and Test Sets
+
+In this step, we bind all the images into rows and divide them into three different sets, including training, validation, and test sets. The training set contains the first 14 images of each of the diseases. The validation set consists of next 2 images while the final 4 images of each disease images are placed in test set.
+
+```{r }
+library(tensorflow)
+#training set
+tr <- c(1:14, 21:34, 41:54, 61:74)
+x.train <- NULL
+for (i in tr) {x.train <- rbind(x.train, myimages[[i]])}
+str(x.train)
+
+#validation set
+va <- c(15:16, 35:36, 55:56, 75:76)
+x.valid <- NULL
+for (i in va) {x.valid <- rbind(x.valid, myimages[[i]])}
+
+#test set
+te <- c(17:20, 37:40, 57:60, 77:80) 
+x.test <- NULL
+for (i in te) {x.test <- rbind(x.test, myimages[[i]])}
+```
+
+In the code chunk shown below, we are defining the Y variables for each of the diseases. That is, in the training set, the first 14 images are related to BB disease, while the next 14 images related to BP disease and so on. Similarly, for the validation set, the first 2 images with BB disease and so on. Finally, the test set consists of first 4 images with BB disease, next four with BP disease and so on.
+
+```{r}
+y.train <- c(0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+             2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3)
+y.valid <- c(0,0,1,1,2,2,3,3)
+y.test <- c(0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3)
+```
+
+### Step 6. One-Hot Encoding/Binary/Dummy Variables
+
+Here, the binary or dummy variables are defined for each of the four diseases. In machine learning terms, this is also called one-hot encoding. 
+```{r }
+train.labels <- to_categorical(y.train)
+valid.labels <- to_categorical(y.valid)
+test.labels <- to_categorical(y.test)
+
+train.labels
+valid.labels
+test.labels
+```
+
+### Step 7. Model Building
+
+In model building, we start by creating a sequential model and then add various layers. ReLu (Rectified Linear Unit) is used as an activation function for hidden layers. The model is acivated with **36 times 36 times 3** equal 3888, which goes into the **input_shape**. For the output layer, we use **softmax** as an activation function. Finally, the summary of the model is obtained from the **summary** function.
+
+```{r}
+str(x.train)
+model1 <- keras_model_sequential()
+model1 %>%
+  layer_dense(units = 256, activation = 'relu', input_shape = c(3888)) %>%
+  layer_dense(units = 128, activation = 'relu') %>%
+  layer_dense(units = 4, activation = 'softmax')
+ 
+summary(model1)
+```
+
+### Step 8. Showing the Calculations of Total Number of Parameters
+
+The R code chunk below explains how we got the total number of parameters as 1028996 in the above step. The number that is added for each of the line below are intercepts. 
+
+```{r}
+(3888*256)+256
+(128*256)+128
+(128*4)+4
+#Total number of parameters = 1028996
+```
+
+### Step 8. Compile the Model
+
+In this step, we compile the model. The **categorical_crossentropy** is used for loss as we are doing a multi-class classification model. **Adam** is used as an optimizer while the **accuracy** is used as a metric.
+```{r }
+model1 %>%
+  compile(loss = 'categorical_crossentropy',
+          optimizer = 'adam',
+          metrics = 'accuracy')
+```
+
+### Step 9. Fit the Model
+
+In this step, we fit the model. The plot consists of two panels. The top panel shows loss while the lower panel shows the accuracy for both training and validation dataset across the number of epochs on the x-axis. From the figure, key takeawsy is that at about 22 epochs the accuracy of the classification of disease images remains more or less same for the rest of epochs.
+
+```{r }
+history <- model1 %>%
+  fit(x.train,
+      train.labels,
+      epochs = 60,
+      batch_size = 65,
+      validation_data = list(x.valid, valid.labels))
+
+plot(history) 
+```
+
+### Step 10. Model Evaluation and Prediction - Train Data
+
+Here, confusion matrix and prediction probabilities of the results on training data is presented.
+```{r}
+# Model Evaluation and Prediction - Train Data
+model1 %>% evaluate(x.train, train.labels)
+
+#confusion matrix
+pred <- model1 %>% predict(x.train) %>% k_argmax()
+table(Predicted = as.numeric(pred), Actual = y.train)
+
+#Prediction probabilities
+prob <- model1 %>% predict(x.train)
+cbind(round(prob, 3), Predicted_class = as.numeric(pred), Actual = y.train)
+
+```
+
+### Step 11. Evaluation and Prediction on the Test Data
+
+In this final step, the confusion matrix and prediction probabilities of the model evaluated on the test data is presented.
+```{r}
+# Evaluation and prediction on the test data
+model1 %>% evaluate(x.test, test.labels)
+
+#confusion matrix
+pred <- model1 %>% predict(x.test) %>% k_argmax()
+table(Predicted = as.numeric(pred), Actual = y.test)
+
+#prediction probabilities
+prob <- model1 %>% predict(x.test)
+cbind(round(prob, 2), Predicted_class = as.numeric(pred), Actual = y.test)
+
+```
+
+### Step 12. Results and Fine Tuning the Model
+
+The training results show good results where the accuracy is quite high but when it comes to the results of test set there are some misclassified disease images. The model in steps 7 and 9 are adjusted with different number of neurons and fine tune to make sure the deep learning model is not overfitted and thereby obtain better results of correctly classified disease images.
